@@ -1,0 +1,9 @@
+{
+  "name": "spicetify-rice",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "build": "npm --prefix extensions/liked-song-filters run build",
+    "test": "npm --prefix extensions/liked-song-filters test && node scripts/validate-marketplace.cjs"
+  }
+}

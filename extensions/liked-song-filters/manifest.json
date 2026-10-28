@@ -1,0 +1,10 @@
+[
+  {
+    "name": "Liked Song Filters",
+    "description": "Create saved Liked Songs filters with genre and mood tags, exclusions, and audio-feature sliders.",
+    "preview": "preview.png",
+    "main": "dist/liked-song-filters.js",
+    "readme": "README.md",
+    "tags": ["liked songs", "filters", "genres", "moods"]
+  }
+]
