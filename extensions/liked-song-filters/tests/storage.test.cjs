@@ -67,3 +67,12 @@ test("storage failures identify whether reading or saving failed", () => {
   store.save({ version: 1, draft, saved: [filter] });
   assert.deepEqual(operations, ["load", "save"]);
 });
+
+test("discovered tags survive reloads and older stored filters load without a migration", () => {
+  const disk = storage(), store = createStore(disk, "rules", core);
+  store.save({ version: 1, draft, saved: [filter], knownTags: ["R&B", "Ambient", "R&B", null] });
+  assert.deepEqual(store.load().knownTags, ["R&B", "Ambient"]);
+  disk.setItem("rules", JSON.stringify({ version: 1, draft, saved: [filter] }));
+  assert.deepEqual(store.load().knownTags, []);
+  assert.deepEqual(store.load().saved, [filter]);
+});

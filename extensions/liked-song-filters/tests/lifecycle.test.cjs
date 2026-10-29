@@ -2,6 +2,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const core = require("../src/core.js");
 const { createStore } = require("../src/storage.js");
+const { createTagCatalog } = require("../src/tags.js");
 const { createExtension } = require("../src/lifecycle.js");
 
 function fixture() {
@@ -17,7 +18,7 @@ function fixture() {
     Spicetify: { Platform: platform, CosmosAsync: { get() {} }, showNotification: (message) => notifications.push(message) },
     setTimeout(fn) { tasks.set(++serial, fn); return serial; }, clearTimeout(id) { tasks.delete(id); },
     MutationObserver: class { constructor(fn) { observer = fn; } observe() {} disconnect() { disconnected = true; } } };
-  const deps = { core, createStore, version: "test", mountPanel({ state, persist }) {
+  const deps = { core, createStore, createTagCatalog, version: "test", mountPanel({ state, persist }) {
     mounts++;
     return { page, panel: { isConnected: true }, toggle: { isConnected: true }, state, persist, destroy() { destroys++; } };
   } };
@@ -98,6 +99,16 @@ test("accounts using the same collection URI keep separate local rules", async (
   await f.flush();
   assert.deepEqual(second.state.draft.include, []);
   second.destroy();
+});
+
+test("tag filtering initializes even when the optional audio API has not loaded", async () => {
+  const f = fixture();
+  delete f.host.Spicetify.CosmosAsync;
+  f.platform.History.location.pathname = "/collection/tracks";
+  const extension = createExtension(f.host, f.deps);
+  await f.flush();
+  assert.equal(f.counts().mounts, 1);
+  extension.destroy();
 });
 
 test("native tag request overlap retries without the misleading load-or-save notification", async () => {

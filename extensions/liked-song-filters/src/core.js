@@ -5,7 +5,8 @@
   function compile(prompt, tags) {
     let remaining = prompt.trim().toLowerCase();
     if (!remaining) throw new Error("Type a tag or combination first.");
-    const names = [...tags].sort((a, b) => b.name.length - a.name.length);
+    const names = tags.flatMap((tag) => [tag.name, ...(tag.aliases ?? [])].map((name) => ({ name, tag })))
+      .sort((a, b) => b.name.length - a.name.length);
     const tokens = [];
     while (remaining) {
       remaining = remaining.trimStart();
@@ -21,7 +22,7 @@
         return remaining.startsWith(label) && (!remaining[label.length] || /\s/.test(remaining[label.length]));
       });
       if (!tag) throw new Error(`Unrecognized words: “${remaining}”. Try the available tags with and, or, or without.`);
-      tokens.push({ type: "tag", tag });
+      tokens.push({ type: "tag", tag: tag.tag });
       remaining = remaining.slice(tag.name.length);
     }
     let cursor = 0;
@@ -118,6 +119,19 @@
     return { tree: compile(base, tags), feature: { field: field.toLowerCase(), operator: operator.toLowerCase(), value } };
   }
 
+  function featureReader(platform, cosmos) {
+    return async (ids) => {
+      if (cosmos?.get) return cosmos.get(
+        `https://spclient.wg.spotify.com/audio-attributes/v1/audio-features?ids=${ids.map(encodeURIComponent).join(",")}`);
+      const builder = platform.LibraryAPI?._builder;
+      if (!builder?.build) throw new Error("Spotify's audio-feature API is unavailable in this build.");
+      const response = await builder.build().withHost("https://spclient.wg.spotify.com/audio-attributes/v1")
+        .withPath("/audio-features").withQueryParameters({ ids: ids.join(",") })
+        .withJsonContentType().withResponseType("json").send();
+      return response.body;
+    };
+  }
+
   function matchesFeature(rule, data) {
     if (!data || typeof data[rule.field] !== "number") return false;
     return rule.operator === "below" ? data[rule.field] < rule.value : data[rule.field] > rule.value;
@@ -202,7 +216,7 @@
     return parts.join(" · ");
   }
 
-  const api = { compile, describe, filters, matches, collect, reader, parseQuery, matchesFeature, collectFeatures,
+  const api = { compile, describe, filters, matches, collect, reader, parseQuery, featureReader, matchesFeature, collectFeatures,
     featureDefinitions, selection, matchesSelection, matchesRanges, formatRange, describeSelection };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.LikedSongsProbeCore = api;

@@ -21,6 +21,14 @@ test("unsupported language and malformed expressions never silently broaden resu
   }
 });
 
+test("discovered tag aliases compile to the same underlying Spotify descriptor", () => {
+  const rnb = { name: "R&B", aliases: ["rnb", "rhythm and blues"], filter: "tags contains r&b" };
+  for (const spelling of ["rnb", "R&B", "rhythm and blues"]) {
+    assert.deepEqual(core.filters(core.compile(`${spelling} without jazz`, [...tags, rnb])),
+      ["tags contains r&b", "tags contains jazz"]);
+  }
+});
+
 test("paging ignores broken zero totals and counts the actual collection", async () => {
   const items = Array.from({ length: 5 }, (_, n) => ({ uri: String(n) }));
   const offsets = [];
@@ -59,6 +67,20 @@ test("numeric prompts enforce units, bounds, strict comparisons, and missing dat
   assert.equal(core.matchesFeature(core.parseQuery("chill with tempo above 100", tags).feature, { tempo: 120 }), true);
   assert.throws(() => core.parseQuery("chill with energy below 40", tags), /between 0 and 1/);
   assert.throws(() => core.parseQuery("chill with tempo above 900", tags), /between 0 and 300/);
+});
+
+test("audio features use the native JSON request builder when Cosmos is absent", async () => {
+  const calls = [];
+  const builder = {};
+  for (const method of ["withHost", "withPath", "withQueryParameters", "withJsonContentType", "withResponseType"]) {
+    builder[method] = (...args) => { calls.push([method, ...args]); return builder; };
+  }
+  const response = { audio_features: [{ id: "a", energy: 0.4 }] };
+  builder.send = async () => ({ body: response });
+  const read = core.featureReader({ LibraryAPI: { _builder: { build: () => builder } } });
+  assert.equal(await read(["a"]), response);
+  assert.deepEqual(calls.find(([method]) => method === "withQueryParameters"), ["withQueryParameters", { ids: "a" }]);
+  assert(calls.some(([method]) => method === "withJsonContentType"));
 });
 
 test("feature batches reuse cache, handle missing features, and reject partial responses", async () => {

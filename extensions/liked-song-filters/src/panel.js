@@ -1,5 +1,5 @@
 // The builder mounts only on Liked Songs; its data belongs to the extension lifecycle.
-function mountPanel({ core, platform, tags, state, cache, featureCache, persist }) {
+function mountPanel({ core, platform, tags, catalog, state, cache, featureCache, persist }) {
   const { saved, draft } = state;
   const page = document.querySelector('.Root__main-view [data-testid="playlist-page"]');
   if (!page || platform.History.location.pathname !== "/collection/tracks") return null;
@@ -19,7 +19,7 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
       <div class="rlp-tag-column">
         <section class="rlp-tag-group" data-list="include"><div class="rlp-section-heading"><label for="rlp-include">Include tags</label><select aria-label="Match included tags"><option value="all">Match all</option><option value="any">Match any</option></select></div><p class="rlp-help">Add the genres and moods you want.</p><div class="rlp-autocomplete"><input id="rlp-include" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="rlp-include-options" placeholder="Try chill, electronic, jazz…" autocomplete="off" maxlength="80"><ul id="rlp-include-options" role="listbox" aria-label="Include tag suggestions" hidden></ul></div><div class="rlp-chips" aria-label="Included tags"></div></section>
         <section class="rlp-tag-group" data-list="exclude"><label for="rlp-exclude">Exclude tags</label><p class="rlp-help">Leave out songs matching any of these tags.</p><div class="rlp-autocomplete"><input id="rlp-exclude" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="rlp-exclude-options" placeholder="Tags to leave out…" autocomplete="off" maxlength="80"><ul id="rlp-exclude-options" role="listbox" aria-label="Exclude tag suggestions" hidden></ul></div><div class="rlp-chips rlp-excluded" aria-label="Excluded tags"></div></section>
-        <p class="rlp-tag-feedback" role="status" aria-live="polite">Type a tag, then press Enter to add it.</p>
+        <p class="rlp-tag-feedback" role="status" aria-live="polite">Choose a suggestion, or type another tag to check your Liked Songs.</p>
         <details class="rlp-advanced"><summary>Write a filter instead</summary><form><label for="rice-pill-prompt">Describe your filter</label><div class="rlp-prompt-row"><input id="rice-pill-prompt" placeholder="chill electronic with energy below 0.4" autocomplete="off" maxlength="160"><button type="submit">Try filter</button></div></form><p class="rlp-help">Use tags with and, or, or without. Add “with energy below 0.4” or another numeric rule.</p></details>
       </div>
       <section class="rlp-audio"><div class="rlp-section-heading"><h3>Fine-tune the sound</h3><button type="button" data-action="reset-audio" class="rlp-text-button">Reset audio</button></div><p class="rlp-help">Enable a feature, then set its minimum and maximum.</p><div class="rlp-feature-grid rlp-primary-features"></div><details class="rlp-more"><summary>More audio features</summary><div class="rlp-feature-grid rlp-extra-features"></div></details></section>
@@ -152,11 +152,14 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
   function tagField(kind) {
     const group = panel.querySelector(`[data-list="${kind}"]`), input = group.querySelector("input");
     const list = group.querySelector('[role="listbox"]'), chips = group.querySelector(".rlp-chips");
-    let suggestions = [], active = 0;
-    const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); input.removeAttribute("aria-activedescendant"); };
+    let suggestions = [], active = 0, lookupTimer, lookupRevision = 0;
+    const close = () => {
+      clearTimeout(lookupTimer); lookupRevision++;
+      list.hidden = true; input.setAttribute("aria-expanded", "false"); input.setAttribute("aria-busy", "false");
+      input.removeAttribute("aria-activedescendant");
+    };
     function refresh() {
-      suggestions = tags.filter((tag) => !draft.include.includes(tag.name) && !draft.exclude.includes(tag.name)
-        && tag.name.toLowerCase().includes(input.value.trim().toLowerCase())).slice(0, 8);
+      suggestions = catalog.suggest(input.value, [...draft.include, ...draft.exclude]);
       active = Math.min(active, Math.max(0, suggestions.length - 1));
       list.replaceChildren();
       suggestions.forEach((tag, index) => {
@@ -195,7 +198,7 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
     }
     function add(tag) {
       if (!tag) {
-        feedback.textContent = "Choose a suggested Spotify tag. No matching tag was found.";
+        feedback.textContent = `No liked songs matched “${input.value.trim()}”. Try a different tag or spelling.`;
         feedback.dataset.error = "true";
         return;
       }
@@ -203,13 +206,41 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
         feedback.textContent = `${tag.name} is already selected. Remove its existing chip to move it.`;
         return;
       }
+      catalog.remember(tag);
       draft[kind].push(tag.name);
       input.value = ""; dirty(); render(); close(); input.focus();
       feedback.dataset.error = "false";
       feedback.textContent = `${tag.name} ${kind === "include" ? "included" : "excluded"}.`;
     }
+    async function discover(commit = false) {
+      const value = input.value.trim();
+      if (!value) return;
+      const revision = ++lookupRevision;
+      input.setAttribute("aria-busy", "true");
+      feedback.dataset.error = "false"; feedback.textContent = `Checking your Liked Songs for “${value}”…`;
+      try {
+        const tag = await catalog.lookup(value);
+        if (destroyed || revision !== lookupRevision) return;
+        if (tag) catalog.remember(tag);
+        if (commit) add(tag);
+        else {
+          refresh();
+          feedback.textContent = tag ? `“${tag.name}” matches your Liked Songs. Press Enter to add it.`
+            : `No liked songs matched “${value}”. Try a different tag or spelling.`;
+        }
+      } catch {
+        if (!destroyed && revision === lookupRevision) {
+          feedback.dataset.error = "true"; feedback.textContent = "Spotify could not check this tag. Press Enter to try again.";
+        }
+      } finally {
+        if (revision === lookupRevision) input.setAttribute("aria-busy", "false");
+      }
+    }
     input.addEventListener("focus", () => { active = 0; refresh(); });
-    input.addEventListener("input", () => { active = 0; refresh(); });
+    input.addEventListener("input", () => {
+      clearTimeout(lookupTimer); lookupRevision++; active = 0; refresh();
+      if (input.value.trim() && !suggestions.length) lookupTimer = setTimeout(() => discover(), 350);
+    });
     input.addEventListener("blur", close);
     input.addEventListener("keydown", (event) => {
       if (event.isComposing) return;
@@ -222,8 +253,9 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
       }
       if (event.key === "Enter") {
         event.preventDefault();
-        const exact = tags.find((tag) => tag.name.toLowerCase() === input.value.trim().toLowerCase());
-        add(exact ?? (!list.hidden ? suggestions[active] : undefined));
+        clearTimeout(lookupTimer);
+        const candidate = catalog.find(input.value) ?? (!list.hidden ? suggestions[active] : undefined);
+        if (candidate) add(candidate); else discover(true);
       }
     });
     const field = { render, close, input };
@@ -274,7 +306,7 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
     panel.querySelector("select").value = draft.mode;
     rangeControls.forEach((render) => render(true));
     feedback.dataset.error = "false";
-    feedback.textContent = "Type a tag, then press Enter to add it.";
+    feedback.textContent = "Choose a suggestion, or type another tag to check your Liked Songs.";
   }
   function loadDraft(value) {
     Object.assign(draft, clone(value));
@@ -314,9 +346,8 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
       if (fields.length) {
         const progress = ({ completed, total }) => { if (!destroyed) status.textContent = `Checking the sound of ${total.toLocaleString()} songs · ${completed.toLocaleString()} ready…`; };
         progress({ completed: candidates.filter((track) => featureCache.has(track.uri)).length, total: candidates.length });
-        await core.collectFeatures(candidates, (ids) => window.Spicetify.CosmosAsync.get(
-          `https://spclient.wg.spotify.com/audio-attributes/v1/audio-features?ids=${ids.map(encodeURIComponent).join(",")}`,
-        ), featureCache, { signal: controller.signal, onProgress: progress });
+        await core.collectFeatures(candidates, core.featureReader(platform, window.Spicetify.CosmosAsync),
+          featureCache, { signal: controller.signal, onProgress: progress });
         unknown = candidates.filter((track) => fields.some((field) => !Number.isFinite(featureCache.get(track.uri)?.[field]))).length;
         tracks = candidates.filter((track) => selection ? core.matchesRanges(ranges, featureCache.get(track.uri)) : core.matchesFeature(parsed.feature, featureCache.get(track.uri)));
       }
@@ -413,7 +444,8 @@ function mountPanel({ core, platform, tags, state, cache, featureCache, persist 
     status.textContent = persisted ? `“${name}” saved on this device.` : "Spotify could not save this filter. Check available storage and try again.";
   });
   function destroy() {
-    destroyed = true; controller?.abort(); panel.remove(); toggle.remove(); style.remove();
+    destroyed = true; controller?.abort(); autocompletes.forEach((field) => field.close());
+    panel.remove(); toggle.remove(); style.remove();
   }
   return { panel, toggle, page, run, runBuilder, destroy, setOpen, persist, tags: [...tags], cache, featureCache, saved, draft };
 }

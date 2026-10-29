@@ -9,7 +9,7 @@ async (page) => {
   try {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => !!window.LikedSongFilters?.state, null, { timeout: 30000 });
-    if (await page.evaluate(() => LikedSongFilters.version) !== "0.1.1") throw new Error("Expected installed version 0.1.1");
+    if (await page.evaluate(() => LikedSongFilters.version) !== "0.1.2") throw new Error("Expected installed version 0.1.2");
     await page.evaluate(() => {
       const api = Spicetify.Platform.LibraryAPI;
       const probe = { original: api.getTracksFilterTags, calls: [] };
@@ -44,6 +44,6 @@ async (page) => {
   const after = await page.evaluate(() => ({ uri: Spicetify.Platform.PlayerAPI.getState().item?.uri,
     paused: Spicetify.Platform.PlayerAPI.getState().isPaused }));
   if (before.uri !== after.uri || before.paused !== after.paused) throw new Error("Playback changed");
-  return { version: "0.1.1", nativeOverlaps: calls.filter((call) => call.duplicate).length,
+  return { version: "0.1.2", nativeOverlaps: calls.filter((call) => call.duplicate).length,
     successfulRequests: calls.filter((call) => call.ok).length, mountTimes, warnings, playbackPreserved: true };
 }

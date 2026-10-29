@@ -7,8 +7,17 @@ Open **Liked Songs → Add Tag**, beside the download button.
 
 Type into **Include tags** or **Exclude tags**, choose an autocomplete suggestion,
 and press Enter. Remove a tag with its ×. Match all included tags or any of them;
-excluded tags always remove matching songs. Suggestions come from your account's
-current Spotify tag list and can change as your library changes.
+excluded tags always remove matching songs. The dropdown starts with Spotify's
+suggested pills, shows all matching suggestions, and has no eight-result limit.
+These suggestions are not Spotify's complete tag vocabulary.
+
+Type another genre or mood to check it against your Liked Songs. For example,
+`RnB` and `rhythm and blues` are recognized as **R&B**. If at least one liked song
+matches, the tag appears as a suggestion; press Enter to add its chip. Enter also
+checks an exact tag immediately. Newly discovered tags are remembered locally.
+Checks read one matching track; they do not index the entire library. No matches
+can mean either an unsupported tag or a supported tag with no songs in your
+library. The extension does not claim it can enumerate every Spotify tag.
 
 Enable sliders for energy, mood (Spotify's valence), danceability, tempo,
 acousticness, instrumentalness, speechiness, liveness, or loudness. Multiple
@@ -32,7 +41,7 @@ and availability depend on Spotify. Up to 20,000 candidate tracks are supported.
 Native library membership is refreshed on each run. Audio-feature data is cached
 in memory until Spotify reloads. Stop cancels after the current request.
 
-Only filter rules are written to local storage. The extension sends requests to
+Only filter rules and names of discovered tags are written to local storage. The extension sends requests to
 Spotify through the signed-in client's API; it has no external server, analytics,
 API key, or additional sign-in. Clearing Spotify's local application storage can
 remove your saved filters. Third-party tools that back up Marketplace entries
@@ -69,7 +78,11 @@ node --check dist/liked-song-filters.js
 No package installation is required. `src/` holds the query engine, storage,
 page UI, and lifecycle. `build.cjs` produces a single standalone extension.
 `tests/` covers filtering, paging, cancellation, persistence, and navigation.
-Version: 0.1.1; tested with Spotify 1.3.4.258 and Spicetify 2.46.4.
+Version: 0.1.2; tested with Spotify 1.3.4.258 and Spicetify 2.46.4.
+
+Version 0.1.2 removes the autocomplete result cap and supports typed tag discovery
+beyond Spotify's suggested pills, including RnB/R&B aliases. Saved filters remain
+usable when their tags disappear from Spotify's suggestions.
 
 Version 0.1.1 quietly retries overlapping native genre-tag requests during page
 loading. Requests from a closed page or an unloaded copy cannot show late error

@@ -1,7 +1,7 @@
 // Persist only filter rules. Library contents and audio features stay in memory.
 function createStore(storage, key, core, onError = () => {}) {
   const emptyDraft = () => ({ include: [], exclude: [], mode: "all", ranges: {} });
-  const empty = () => ({ version: 1, draft: emptyDraft(), saved: [] });
+  const empty = () => ({ version: 1, draft: emptyDraft(), saved: [], knownTags: [] });
   function draft(value) {
     if (!value || typeof value !== "object") throw new Error("Invalid filter");
     if ((value.include !== undefined && !Array.isArray(value.include))
@@ -18,6 +18,8 @@ function createStore(storage, key, core, onError = () => {}) {
   function normalize(value) {
     if (value?.version !== 1) throw new Error("Unsupported filter storage version");
     const result = empty();
+    result.knownTags = [...new Set((Array.isArray(value.knownTags) ? value.knownTags : [])
+      .filter((name) => typeof name === "string" && name.trim() && name.length <= 80))].slice(-200);
     try { result.draft = draft(value.draft); } catch { /* A damaged draft must not hide valid saved pills. */ }
     for (const item of Array.isArray(value.saved) ? value.saved.slice(0, 100) : []) {
       try {

@@ -1,8 +1,8 @@
-function createExtension(host, { core, createStore, mountPanel, version }) {
+function createExtension(host, { core, createStore, createTagCatalog, mountPanel, version }) {
   host.LikedSongFilters?.destroy();
   host.LikedSongsPillPrototype?.destroy();
   let stopped = false, timer, observer, unlisten, platform, store, state, mounted;
-  let loading = false, tags, retryAt = 0, tagRetries = 0, routeEpoch = 0;
+  let loading = false, tags, catalog, retryAt = 0, tagRetries = 0, routeEpoch = 0;
   const warned = new Set();
   const cache = new Map(), featureCache = new Map();
   function notify(error, operation = "initialize") {
@@ -29,7 +29,7 @@ function createExtension(host, { core, createStore, mountPanel, version }) {
     const api = host.Spicetify;
     if (!platform) {
       if (!api?.Platform?.History?.listen || !api.Platform.LibraryAPI?.getTracksFilterTags
-        || !api.Platform.LibraryAPI._likedSongsUri || !api.Platform.PlaylistAPI?.getContents || !api.CosmosAsync?.get) {
+        || !api.Platform.LibraryAPI._likedSongsUri || !api.Platform.PlaylistAPI?.getContents) {
         schedule(250); return;
       }
       loading = true;
@@ -64,12 +64,14 @@ function createExtension(host, { core, createStore, mountPanel, version }) {
         const response = await platform.LibraryAPI.getTracksFilterTags();
         if (stopped || epoch !== routeEpoch) return;
         if (!Array.isArray(response)) throw new Error("Spotify returned an invalid tag list");
-        tags = response.filter((tag) => typeof tag?.name === "string" && typeof tag.filter === "string"
+        const native = response.filter((tag) => typeof tag?.name === "string" && typeof tag.filter === "string"
           && tag.filter.startsWith("tags contains ")).map((tag) => ({ name: tag.name, filter: tag.filter }));
+        catalog = createTagCatalog(native, platform, state, () => store.save(state));
+        tags = catalog.tags;
         tagRetries = 0;
       }
       if (stopped || platform.History.location.pathname !== "/collection/tracks") return;
-      mounted = mountPanel({ core, platform, tags, state, cache, featureCache, persist: () => store.save(state) });
+      mounted = mountPanel({ core, platform, tags, catalog, state, cache, featureCache, persist: () => store.save(state) });
     } catch (error) {
       if (stopped || epoch !== routeEpoch) return;
       // Spotify's native page requests the same genre tags. Its request bridge
