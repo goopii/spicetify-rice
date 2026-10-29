@@ -2,13 +2,20 @@ function createExtension(host, { core, createStore, mountPanel, version }) {
   host.LikedSongFilters?.destroy();
   host.LikedSongsPillPrototype?.destroy();
   let stopped = false, timer, observer, unlisten, platform, store, state, mounted;
-  let loading = false, tags, retryAt = 0, warned = false;
+  let loading = false, tags, retryAt = 0, tagRetries = 0, routeEpoch = 0;
+  const warned = new Set();
   const cache = new Map(), featureCache = new Map();
-  function notify(error) {
-    if (warned) return;
-    warned = true;
-    host.console.warn("Liked Song Filters:", error.message);
-    host.Spicetify?.showNotification?.("Liked Song Filters could not load or save. Check Spotify's developer console.", true);
+  function notify(error, operation = "initialize") {
+    if (stopped || warned.has(operation)) return;
+    warned.add(operation);
+    const messages = {
+      initialize: "Liked Song Filters could not initialize. Try reopening Spotify.",
+      tags: "Liked Song Filters could not load Spotify's genre tags. Reopen Liked Songs to retry.",
+      load: "Liked Song Filters could not read saved filters. Check Spotify's developer console.",
+      save: "Liked Song Filters could not save filters on this device. Check available storage.",
+    };
+    host.console.warn(`Liked Song Filters (${operation}):`, error.message);
+    host.Spicetify?.showNotification?.(messages[operation], true);
   }
   function schedule(delay = 100) {
     if (stopped || timer) return;
@@ -34,10 +41,14 @@ function createExtension(host, { core, createStore, mountPanel, version }) {
         const key = "liked-song-filters:v1:" + (user?.username ?? platform.LibraryAPI._likedSongsUri);
         store = createStore(host.localStorage, key, core, notify);
         state = store.load();
-        unlisten = platform.History.listen(() => { tags = null; unmount(); schedule(); });
+        unlisten = platform.History.listen(() => {
+          routeEpoch++; tags = null; retryAt = 0; tagRetries = 0;
+          host.clearTimeout(timer); timer = null;
+          unmount(); schedule();
+        });
         observer = new host.MutationObserver(() => schedule());
         observer.observe(host.document.body, { childList: true, subtree: true });
-      } catch (error) { notify(error); schedule(5000); return; }
+      } catch (error) { notify(error, "initialize"); schedule(5000); return; }
       finally { loading = false; }
     }
     if (platform.History.location.pathname !== "/collection/tracks") { unmount(); return; }
@@ -47,17 +58,34 @@ function createExtension(host, { core, createStore, mountPanel, version }) {
     if (!page) return;
     if (host.Date.now() < retryAt) { schedule(retryAt - host.Date.now()); return; }
     loading = true;
+    const epoch = routeEpoch;
     try {
       if (!tags) {
         const response = await platform.LibraryAPI.getTracksFilterTags();
+        if (stopped || epoch !== routeEpoch) return;
         if (!Array.isArray(response)) throw new Error("Spotify returned an invalid tag list");
         tags = response.filter((tag) => typeof tag?.name === "string" && typeof tag.filter === "string"
           && tag.filter.startsWith("tags contains ")).map((tag) => ({ name: tag.name, filter: tag.filter }));
+        tagRetries = 0;
       }
       if (stopped || platform.History.location.pathname !== "/collection/tracks") return;
       mounted = mountPanel({ core, platform, tags, state, cache, featureCache, persist: () => store.save(state) });
-    } catch (error) { notify(error); retryAt = host.Date.now() + 30000; schedule(30000); }
-    finally { loading = false; }
+    } catch (error) {
+      if (stopped || epoch !== routeEpoch) return;
+      // Spotify's native page requests the same genre tags. Its request bridge
+      // rejects concurrent identical requests instead of sharing the result.
+      // This is a short-lived loading conflict, not a saved-filter failure.
+      const duplicate = error?.code === "DUPLICATE_REQUEST_ERROR"
+        || String(error?.message).includes("DUPLICATE_REQUEST_ERROR");
+      const quietRetry = duplicate && tagRetries < 6;
+      const delay = quietRetry ? Math.min(250 * 2 ** tagRetries++, 2000) : 30000;
+      if (!quietRetry) notify(error, "tags");
+      retryAt = host.Date.now() + delay;
+      schedule(delay);
+    } finally {
+      loading = false;
+      if (!stopped && epoch !== routeEpoch) schedule();
+    }
   }
   const extension = {
     version,

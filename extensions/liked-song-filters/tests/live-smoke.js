@@ -24,7 +24,7 @@ async (page) => {
   }
   let count;
   try {
-    check(await page.evaluate(() => LikedSongFilters.version === "0.1.0"), "Installed bundle loads automatically without script injection");
+    check(await page.evaluate(() => LikedSongFilters.version === "0.1.1"), "Installed bundle loads automatically without script injection");
     await visit();
     check(await page.locator("#rlp-add-tag").count() === 1, "One Add Tag button mounts on Liked Songs");
     await open();

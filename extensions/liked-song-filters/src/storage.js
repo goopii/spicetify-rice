@@ -40,11 +40,11 @@ function createStore(storage, key, core, onError = () => {}) {
       try {
         const raw = storage.getItem(key);
         return raw ? normalize(JSON.parse(raw)) : empty();
-      } catch (error) { onError(error); return empty(); }
+      } catch (error) { onError(error, "load"); return empty(); }
     },
     save(value) {
       try { storage.setItem(key, JSON.stringify(normalize(value))); return true; }
-      catch (error) { onError(error); return false; }
+      catch (error) { onError(error, "save"); return false; }
     },
   };
 }

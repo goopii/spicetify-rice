@@ -69,7 +69,12 @@ node --check dist/liked-song-filters.js
 No package installation is required. `src/` holds the query engine, storage,
 page UI, and lifecycle. `build.cjs` produces a single standalone extension.
 `tests/` covers filtering, paging, cancellation, persistence, and navigation.
-Version: 0.1.0; tested with Spotify 1.3.4.258 and Spicetify 2.46.4.
+Version: 0.1.1; tested with Spotify 1.3.4.258 and Spicetify 2.46.4.
+
+Version 0.1.1 quietly retries overlapping native genre-tag requests during page
+loading. Requests from a closed page or an unloaded copy cannot show late error
+notifications. Genuine failures identify initialization, genre tags, reading,
+or saving instead of showing a combined load/save message.
 
 The root [Marketplace manifest](../../manifest.json) publishes this extension
 from [spicetify-rice](https://github.com/goopii/spicetify-rice). See

@@ -56,3 +56,14 @@ test("prompt pills round-trip without depending on currently suggested tags", ()
   store.save({ version: 1, draft, saved });
   assert.deepEqual(store.load().saved, saved);
 });
+
+test("storage failures identify whether reading or saving failed", () => {
+  const operations = [];
+  const store = createStore({
+    getItem() { throw new Error("Read unavailable"); },
+    setItem() { throw new Error("Write unavailable"); },
+  }, "rules", core, (_, operation) => operations.push(operation));
+  store.load();
+  store.save({ version: 1, draft, saved: [filter] });
+  assert.deepEqual(operations, ["load", "save"]);
+});
